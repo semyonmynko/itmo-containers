@@ -1,12 +1,12 @@
 # Использование жирной версии образа и указание последней версии
-FROM python:latest
+FROM python:3.12
 
 WORKDIR /shop_api
 
 VOLUME /shop_api/data
 
 # Копирование всех файлов из директории, что увеличивает образ и может быть небезопасно (например, копирование .env файла)
-COPY .. /shop_api
+COPY . /shop_api
 
 # Разделение команд, что приводит к увеличению количества слоев
 RUN python -m pip install --upgrade pip

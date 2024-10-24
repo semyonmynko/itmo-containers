@@ -37,7 +37,7 @@
 
 ```bash
 # Сборка образа с плохими практиками
-docker build -t bad_image -f dockerfile.bad .
+docker rmi -f bad_docker && docker build -f dockerfile.bad -t bad_docker . && docker run -p 80:80 -it bad_docker
 
 # Сборка образа с хорошими практиками
-docker build -t good_image -f dockerfile.good .
+docker rmi -f good_docker && docker build -f dockerfile.good -t good_docker . && docker run -p 80:80 -it good_docker
