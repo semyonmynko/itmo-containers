@@ -15,6 +15,9 @@ grpcio-tools = "^1.66.1"
 websockets = "^13.1"
 websocket-client = "^1.8.0"
 prometheus-fastapi-instrumentator = "^7.0.0"
+sqlalchemy = "^2.0.36"
+pydantic = "^2.9.2"
+psycopg2-binary = "^2.9.10"
 
 
 [tool.poetry.group.dev.dependencies]

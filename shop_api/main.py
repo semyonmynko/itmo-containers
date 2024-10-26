@@ -1,14 +1,22 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from http import HTTPStatus
 from starlette.responses import Response
 from typing import List, Optional
-from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy.orm import Session
 
-from .queries import get_cart, create_cart, get_carts, add_item, get_item, get_items, delete_item, add_item_in_cart, change_item, modify_item
+from .crud import get_cart, create_cart, get_carts, add_item, get_item, get_items, delete_item, add_item_in_cart, change_item, modify_item
 from .models import Cart, Item, ItemPut, ItemPatch
+from .db import SessionLocal
 
 app = FastAPI(title="Shop API")
-Instrumentator().instrument(app).expose(app)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @app.post(
@@ -24,8 +32,8 @@ Instrumentator().instrument(app).expose(app)
     status_code=HTTPStatus.CREATED,
     response_model=Cart
 )
-def create_new_cart(response: Response):
-    cart: Cart = create_cart()
+def create_new_cart(response: Response, db: Session = Depends(get_db)):
+    cart: Cart = create_cart(db)
     response.headers['location'] = f'/cart/{cart.id}'
     return cart
 
@@ -43,8 +51,8 @@ def create_new_cart(response: Response):
     status_code=HTTPStatus.OK,
     response_model=Cart
 )
-def get_cart_by_id(id: int):
-    cart = get_cart(id)
+def get_cart_by_id(id: int, db: Session = Depends(get_db)):
+    cart = get_cart(db, id)
     if cart is None:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Cart not found")
     return cart
@@ -69,10 +77,11 @@ def get_carts_by_params(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     min_quantity: Optional[int] = None,
-    max_quantity: Optional[int] = None
+    max_quantity: Optional[int] = None,
+    db: Session = Depends(get_db)
     ):
     try:
-        carts = get_carts(limit=limit, offset=offset, min_price=min_price, max_price=max_price, min_quantity=min_quantity, max_quantity=max_quantity)
+        carts = get_carts(db, offset, limit, min_price, max_price, min_quantity, max_quantity)
     except Exception as e:
         raise HTTPException(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, detail=f"{e}")
     if carts is None:
@@ -93,9 +102,9 @@ def get_carts_by_params(
     status_code=HTTPStatus.CREATED,
     response_model=Cart
 )
-def add_new_item_in_cart(cart_id: int, item_id: int):
+def add_new_item_in_cart(cart_id: int, item_id: int, db: Session = Depends(get_db)):
     try:
-        cart = add_item_in_cart(cart_id, item_id)
+        cart = add_item_in_cart(db, cart_id, item_id)
     except Exception as e:
         raise HTTPException(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, detail=f"{e}")
     return cart
@@ -114,9 +123,9 @@ def add_new_item_in_cart(cart_id: int, item_id: int):
     status_code=HTTPStatus.CREATED,
     response_model=Item
 )
-def create_new_item(request: Item, response: Response):
+def create_new_item(request: Item, response: Response, db: Session = Depends(get_db)):
     try:
-        item: Item = add_item(request)
+        item: Item = add_item(db, request.dict())
         response.headers['location'] = f'/item/{item.id}'
         return item
     except ValueError as ve:
@@ -136,8 +145,8 @@ def create_new_item(request: Item, response: Response):
     status_code=HTTPStatus.OK,
     response_model=Item
 )
-def get_item_by_id(id: int):
-    item = get_item(id)
+def get_item_by_id(id: int, db: Session = Depends(get_db)):
+    item = get_item(db, id)
     if item is None:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Item not found")
     return item
@@ -161,10 +170,11 @@ def get_items_by_params(
     offset: Optional[int] = 0, 
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    show_deleted: Optional[bool] = False
+    show_deleted: Optional[bool] = False,
+    db: Session = Depends(get_db)
     ):
     try:
-        items = get_items(limit=limit, offset=offset, min_price=min_price, max_price=max_price, show_deleted=show_deleted)
+        items = get_items(db, offset, limit, min_price, max_price, show_deleted)
     except Exception as e:
         raise HTTPException(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, detail=f"{e}")
     if items is None:
@@ -185,11 +195,11 @@ def get_items_by_params(
     status_code=HTTPStatus.OK,
     response_model=Item
 )
-def change_item_by_id(id: int, request: ItemPut):
+def change_item_by_id(id: int, request: ItemPut, db: Session = Depends(get_db)):
     try:    
-        item = change_item(item_id=id, new_item=request)
+        item = change_item(db, id, request)
     except Exception as e:
-        raise HTTPException(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, detail="Item not found")
+        raise HTTPException(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, detail=str(e))
     return item
 
 
@@ -206,9 +216,9 @@ def change_item_by_id(id: int, request: ItemPut):
     status_code=HTTPStatus.OK,
     response_model=Item
 )
-def modify_item_by_id(id: int, request: ItemPatch):
+def modify_item_by_id(id: int, request: ItemPatch, db: Session = Depends(get_db)):
     try:
-        item = modify_item(item_id=id, new_name=request.name, new_price=request.price)
+        item = modify_item(db, id, request.name, request.price)
     except Exception as e:
         raise HTTPException(status_code=HTTPStatus.NOT_MODIFIED, detail="Item not found")
     return item
@@ -222,9 +232,9 @@ def modify_item_by_id(id: int, request: ItemPatch):
     },
     status_code=HTTPStatus.OK,
 )
-def delete_item_by_id(id: int):
+def delete_item_by_id(id: int, db: Session = Depends(get_db)):
     try:
-        item = delete_item(id)
+        item = delete_item(db, id)
     except Exception as e:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Item not found")
     return item
