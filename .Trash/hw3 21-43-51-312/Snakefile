@@ -1,0 +1,93 @@
+import json
+import csv
+
+# Загрузка параметров из params.json
+with open("params.json") as f:
+    params = json.load(f)
+
+# Чтение данных из samples.csv
+samples = []
+with open("samples.csv") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        samples.append(row)
+
+# Создание словаря для удобного доступа к образцам
+samples_dict = {sample["sample_id"]: sample for sample in samples}
+
+# Основное правило для запуска всех шагов пайплайна
+rule all:
+    input:
+        expand("{outdir}/fastqc/{sample}_1_fastqc.html", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples]),
+        expand("{outdir}/fastqc/{sample}_2_fastqc.html", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples]),
+        expand("{outdir}/quast/{sample}/report.txt", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples]),
+        expand("{outdir}/prokka/{sample}/annotation.gff", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples]),
+        #expand("{outdir}/abricate/{sample}_ncbi_results.txt", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples]),
+        #expand("{outdir}/abricate/{sample}_resfinder_results.txt", outdir=params["global_params"]["outdir"], sample=[s["sample_id"] for s in samples])
+
+# Правило для FastQC для контроля качества ридов
+rule fastqc:
+    input:
+        read_1 = lambda wildcards: samples_dict[wildcards.sample]["read_1"],
+        read_2 = lambda wildcards: samples_dict[wildcards.sample]["read_2"]
+    output:
+        html_1 = "{outdir}/fastqc/{sample}_1_fastqc.html",
+        html_2 = "{outdir}/fastqc/{sample}_2_fastqc.html"
+    conda: "envs/fastqc.yaml"
+    params:
+        outdir = params["global_params"]["outdir"]
+    shell:
+        "fastqc {input.read_1} {input.read_2} -o {params.outdir}/fastqc"
+
+# Правило для сборки генома с SPAdes (только для образцов без готового assembly_fasta)
+rule spades:
+    input:
+        read_1 = lambda wildcards: samples_dict[wildcards.sample]["read_1"],
+        read_2 = lambda wildcards: samples_dict[wildcards.sample]["read_2"]
+    output:
+        contigs = "{outdir}/spades/{sample}/contigs.fasta",
+        scaffolds = "{outdir}/spades/{sample}/scaffolds.fasta"
+    conda: "envs/spades.yaml"
+    params:
+        outdir = params["global_params"]["outdir"],
+        threads = params["spades"]["threads"],
+        memory = params["spades"]["memory"],
+        sample = lambda wildcards: wildcards.sample,
+        has_assembly = lambda wildcards: samples_dict[wildcards.sample]["assembly"]
+    shell:
+        """
+        if [ -z "{params.has_assembly}" ]; then
+            spades.py -1 {input.read_1} -2 {input.read_2} -o {params.outdir}/spades/{params.sample} --threads {params.threads} --memory {params.memory};
+        else
+            echo "Skipping SPAdes for sample {params.sample} as assembly file is already provided.";
+            touch {output.contigs};
+            touch {output.scaffolds};
+        fi
+        """
+
+# Правило для оценки качества сборки с QUAST
+rule quast:
+    input:
+        contigs = lambda wildcards: samples_dict[wildcards.sample]["assembly"] if samples_dict[wildcards.sample]["assembly"] else rules.spades.output.contigs
+    output:
+        report = "{outdir}/quast/{sample}/report.txt"
+    conda: "envs/quast.yaml"
+    params:
+        outdir = params["global_params"]["outdir"]
+    shell:
+        "quast.py {input.contigs} -o {params.outdir}/quast/{wildcards.sample}"
+
+# Правило для аннотации генома с Prokka (только если есть сборка)
+rule prokka:
+    input:
+        scaffolds = lambda wildcards: samples_dict[wildcards.sample]["assembly"] if samples_dict[wildcards.sample]["assembly"] else rules.spades.output.scaffolds
+    output:
+        annotation = "{outdir}/prokka/{sample}/annotation.gff"
+    conda: "envs/prokka.yaml"
+    params:
+        outdir = params["prokka"]["outdir"],
+        genus = params["prokka"]["genus"]
+    shell:
+        "prokka --outdir {params.outdir}/{wildcards.sample} --prefix annotation --genus {params.genus} {input.scaffolds}"
+
+# Правило для поиска генов устойчивости и вирулентности с помощью Abricate

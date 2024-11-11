@@ -1,0 +1,17 @@
+{
+  "global_params": {
+    "outdir": "test_output",
+    "threads": 8
+  },
+  "spades": {
+    "threads": 4,
+    "memory": "16"
+  },
+  "prokka": {
+    "genus": "Escherichia",
+    "outdir": "prokka_out"
+  },
+  "abricate": {
+    "database": "ResFinder"
+  }
+}

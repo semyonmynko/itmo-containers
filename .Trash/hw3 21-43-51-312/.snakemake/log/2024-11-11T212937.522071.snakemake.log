@@ -1,0 +1,8 @@
+host: LYHPF02D5Q
+Building DAG of jobs...
+MissingInputException in rule abricate in file /Users/samynko/DD_2024_private/hw3/Snakefile, line 83:
+Missing input files for rule abricate:
+    output: test_output/sample1_abricate.txt
+    wildcards: sample=sample1
+    affected files:
+        test_output/sample1_prokka_out/PROKKA_11112024.gbk
