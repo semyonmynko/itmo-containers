@@ -1,7 +1,0 @@
-host: LYHPF02D5Q
-Building DAG of jobs...
-MissingInputException in rule all in file /Users/samynko/DD_2024_private/hw3/Snakefile, line 18:
-Missing input files for rule all:
-    affected files:
-        test_output/sample2_abricate.txt
-        test_output/sample1_abricate.txt
