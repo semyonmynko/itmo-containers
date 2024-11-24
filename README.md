@@ -1,79 +1,50 @@
-# Лабораторная работа 2
+# Лабораторная работа 4
 
-## Описание docker-compose.yml
+# Собственный сервис на Kubernetes
 
-### База данных
+## Ход работы
 
-- **Образ:** `postgres:14`
-- **Имя контейнера:** `postgres_service`
-- **Переменные окружения:**
-  - `POSTGRES_USER`: имя пользователя для доступа к базе данных
-  - `POSTGRES_PASSWORD`: пароль для пользователя
-  - `POSTGRES_DB`: название БД
-- **Тома:**
-  - `db_data:/var/lib/postgresql/data`: данные сохраняются в volume для их сохранения после перезапуска контейнера.
-- **Healthcheck:**
-  - Команда: `pg_isready -U ${POSTGRES_USER}`, проверяет, готов ли сервер к приему запросов.
-  - Интервал проверки: 10 секунд
-  - Таймаут: 5 секунд
-  - Количество повторов: 5
+### 0. Сборка и загрузка образа приложения в minikube
+```
+docker build -t shop-api:latest .
+minikube image load shop-api:latest
+```
 
+### 1. Запуск minikube
+```
+minikube start
+```
 
-### Инициализация 
+### 2. Применение манифестов configmap и secret
+```
+kubectl apply -f manifests/configmap.yaml
+kubectl apply -f manifests/secret.yaml
+```
 
-Собирается из текущей директории с использованием `Dockerfile`.
-- **Имя контейнера:** `init_service`
-- **Зависимость:** запускается после `db`
-- **Тома:**
-  - `.:/shop_api`: монтирует текущую директорию внутрь контейнера по пути `/shop_api`
-- **Рабочая директория:** `/shop_api`
-- **Переменные окружения:** 
-  - Конфигурация аналогична сервису `db`, с добавлением параметров `POSTGRES_HOST` и `POSTGRES_PORT` для подключения к базе
-- **Сеть:**`my_network`.
-- **Команда запуска:** `python shop_api/init_db.py` — выполняет скрипт инициализации БД
+### 3. Развертывание PostgreSQL
+```
+kubectl apply -f manifests/postgres/pvc.yaml
+kubectl apply -f manifests/postgres/deployment.yaml
+kubectl apply -f manifests/postgres/service.yaml
+```
 
-### Сервис `app`
+### 4. Развертывание приложения
+```
+kubectl apply -f manifests/app/deployment.yaml
+kubectl apply -f manifests/app/service.yaml
+```
 
-Основной сервис, отвечающий за запуск веб-приложения.
-Собирается из текущей директории с использованием `Dockerfile`.
-- **Имя контейнера:** `app_service`
-- **Healthcheck:**
-  - Команда: `curl -f http://localhost/docs` проверяет доступность документации Swagger
-  - Интервал проверки: 30 секунд
-  - Тайм-аут: 10 секунд
-  - Количество попыток: 3
-  - `.:/shop_api`: монтирует текущую директорию внутрь контейнера по пути `/shop_api`
-- **Рабочая директория:** `/shop_api`
-  - Настройки базы данных аналогичны сервису `init`.
-Запускается после `db` и `init`.
-Также подключен к `my_network`.
-- **Команда запуска:** `poetry run uvicorn shop_api.main:app --host 0.0.0.0 --port 80` — запускает приложение с использованием Uvicorn
+### 5. Проверка подов
+```
+kubectl get pods
+```
 
-## Сеть `my_network`
+### 6. Тестирование сервиса
+```
+minikube service app-service --url
+```
 
-Создается пользовательская сеть с драйвером `bridge` для обеспечения взаимодействия между контейнерами `db`, `init` и `app`.
-
-## Тома
-
-- **db_data:** Обеспечивает постоянное хранение данных для базы данных PostgreSQL. Данные сохраняются на хосте и не удаляются при остановке контейнера.
-
-## Ответы на вопросы
-
-1. **Ограничение ресурсов**: Да, в `docker-compose.yml` можно ограничивать ресурсы для сервисов. Например, для ограничения процессора и памяти:
-   ```yaml
-   services:
-     my_service:
-       image: my_image
-       deploy:
-         resources:
-           limits:
-             cpus: "0.5"
-             memory: "256M"
-   ```
-   Это указывает Docker использовать не более 0.5 ядер CPU и 256 MB памяти для сервиса.
-
-2. **Запуск определенного сервиса**: Чтобы запустить только один сервис, можно указать его имя после команды:
-   ```bash
-   docker-compose up my_service
-   ```
-   Это запустит `my_service` и любые зависимости, если они определены.
+## Результат
+![-](screenshots/dashboard.png)
+![-](screenshots/api_work.png)
+![-](screenshots/api.png)
